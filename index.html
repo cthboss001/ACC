@@ -815,12 +815,21 @@
     <script>
         let tasks = JSON.parse(localStorage.getItem('academic_tasks') || '[]');
 
+        // Initialize view on load
+        window.addEventListener('DOMContentLoaded', () => {
+            render();
+        });
+
         function toggleForm() {
             document.getElementById('taskForm').classList.toggle('hidden');
         }
 
         function addTask() {
-            const title = document.getElementById('taskTitle').value;
+            const titleInput = document.getElementById('taskTitle');
+            const deadlineInput = document.getElementById('taskDeadline');
+            const priorityInput = document.getElementById('taskPriority');
+            
+            const title = titleInput.value;
             if (!title.trim()) {
                 alert('⚠️ Please enter a task title');
                 return;
@@ -829,8 +838,8 @@
             const task = {
                 id: Date.now(),
                 title: title,
-                deadline: document.getElementById('taskDeadline').value,
-                priority: document.getElementById('taskPriority').value,
+                deadline: deadlineInput.value,
+                priority: priorityInput.value,
                 completed: false,
                 createdAt: new Date().toISOString()
             };
@@ -838,9 +847,9 @@
             tasks.push(task);
             saveTasks();
             
-            document.getElementById('taskTitle').value = '';
-            document.getElementById('taskDeadline').value = '';
-            document.getElementById('taskPriority').value = 'high';
+            titleInput.value = '';
+            deadlineInput.value = '';
+            priorityInput.value = 'high';
             
             toggleForm();
             render();
@@ -875,13 +884,20 @@
             const diff = date - now;
             
             if (diff < 0) {
-                return { text: '⚠️ Overdue', isOverdue: true, percentage: 0 };
+                return { text: '⚠️ Overdue', isOverdue: true, percentage: 100 };
             }
             
             const hours = Math.floor(diff / (1000 * 60 * 60));
             const days = Math.floor(hours / 24);
+            
+            // Calculate progress percentage (visual estimate)
+            // Assuming 7 days is a full bar for visual context
             const totalHours = diff / (1000 * 60 * 60);
-            const percentage = Math.min(100, (totalHours / 168) * 100);
+            let percentage = 0;
+            
+            if (totalHours < 24) percentage = 90; // Critical
+            else if (totalHours < 72) percentage = 60; // Urgent
+            else percentage = 30; // Upcoming
             
             let text = '';
             if (days > 0) {
@@ -902,6 +918,7 @@
             });
             const completed = tasks.filter(t => t.completed);
             
+            // Stats & DOM Elements
             const banner = document.getElementById('statusBanner');
             const icon = document.getElementById('statusIcon');
             const title = document.getElementById('statusTitle');
@@ -910,6 +927,20 @@
             const projectStatus = document.getElementById('projectStatus');
             const floatingAlert = document.getElementById('floatingAlert');
             
+            // Update Stats
+            document.getElementById('doneCount').textContent = completed.length;
+            document.getElementById('activeTasks').textContent = pending.length;
+            document.getElementById('completedTasks').textContent = completed.length;
+            document.getElementById('highPriority').textContent = pending.filter(t => t.priority === 'high').length;
+            
+            const total = tasks.length;
+            const rate = total === 0 ? 0 : Math.round((completed.length / total) * 100);
+            document.getElementById('completionRate').textContent = `${rate}%`;
+
+            document.getElementById('pendingCount').textContent = `(${pending.length})`;
+            document.getElementById('completedCount').textContent = `(${completed.length})`;
+
+            // Update Banner Status
             if (pending.length > 0) {
                 banner.className = 'status-banner active';
                 icon.textContent = '🎯';
@@ -928,4 +959,64 @@
                 floatingAlert.classList.add('hidden');
             }
 
-            document.getElementById('doneCount').textContent = completed.length;
+            // Render Task Lists
+            const pendingContainer = document.getElementById('pendingTasks');
+            const completedContainer = document.getElementById('completedTasksList');
+            const completedSection = document.getElementById('completedSection');
+
+            // Helper to generate HTML for a task
+            const createTaskHTML = (task) => {
+                const deadlineInfo = formatDeadline(task.deadline);
+                const deadlineHTML = deadlineInfo ? 
+                    `<span style="color: ${deadlineInfo.isOverdue ? '#ef4444' : 'inherit'}">${deadlineInfo.text}</span>` : 
+                    '<span>No deadline</span>';
+                
+                const progressWidth = deadlineInfo ? deadlineInfo.percentage : 0;
+
+                return `
+                    <div class="task ${task.priority} ${task.completed ? 'completed' : ''}">
+                        <div class="checkbox ${task.completed ? 'checked' : ''}" onclick="toggleTask(${task.id})"></div>
+                        <div class="task-content">
+                            <div class="task-header">
+                                <span class="priority-badge ${task.priority}">${task.priority}</span>
+                                ${task.completed ? '<span class="priority-badge medium">DONE</span>' : ''}
+                            </div>
+                            <div class="task-title">${task.title}</div>
+                            <div class="task-meta">
+                                ${deadlineHTML}
+                            </div>
+                             ${!task.completed && deadlineInfo ? `
+                                <div class="progress-bar">
+                                    <div class="progress-fill ${task.priority}" style="width: ${progressWidth}%"></div>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <button class="delete-btn" onclick="deleteTask(${task.id})">Delete</button>
+                    </div>
+                `;
+            };
+
+            // Inject Pending Tasks
+            if (pending.length === 0) {
+                pendingContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">🎉</div>
+                        <div class="empty-title">No Pending Tasks</div>
+                        <div class="empty-text">You're all caught up!</div>
+                    </div>`;
+            } else {
+                pendingContainer.innerHTML = pending.map(task => createTaskHTML(task)).join('');
+            }
+
+            // Inject Completed Tasks
+            if (completed.length > 0) {
+                completedSection.classList.remove('hidden');
+                completedContainer.innerHTML = completed.map(task => createTaskHTML(task)).join('');
+            } else {
+                completedSection.classList.add('hidden');
+                completedContainer.innerHTML = '';
+            }
+        }
+    </script>
+</body>
+</html>
